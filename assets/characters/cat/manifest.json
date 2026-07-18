@@ -1,0 +1,11 @@
+{
+  "name": "Cat",
+  "spriteWidth": 160,
+  "spriteHeight": 160,
+  "scale": 0.8,
+  "walkSpeedPixelsPerSecond": 95,
+  "idleStretchSeconds": 12,
+  "idleWalkSeconds": 22,
+  "pauseMinSeconds": 2,
+  "pauseMaxSeconds": 5
+}
