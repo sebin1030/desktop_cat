@@ -38,12 +38,12 @@ NAMES = [
 ]
 
 FLIP_HORIZONTAL = {
-    "walk_r_01.png",
-    "walk_r_02.png",
-    "walk_r_03.png",
-    "walk_r_04.png",
-    "walk_r_05.png",
-    "walk_r_06.png",
+    "walk_l_01.png",
+    "walk_l_02.png",
+    "walk_l_03.png",
+    "walk_l_04.png",
+    "walk_l_05.png",
+    "walk_l_06.png",
 }
 
 WALK_NAMES = [name for name in NAMES if name.startswith("walk_")]
@@ -131,15 +131,17 @@ def pad_box(box, padding, image_size):
 
 
 def make_background_transparent(img: Image.Image) -> Image.Image:
-    """Remove the near-white background connected to the crop edges."""
+    """Remove the full checkerboard background without eating enclosed fur."""
     arr = np.array(img.convert("RGBA"))
     rgb = arr[:, :, :3].astype(np.int16)
     brightness = rgb.mean(axis=2)
     saturation = rgb.max(axis=2) - rgb.min(axis=2)
 
-    # Only near-white, nearly neutral pixels can be background. Flood-filling
-    # from the edges prevents enclosed light parts of the cat from disappearing.
-    candidate = (brightness >= 235) & (saturation <= 20)
+    # The source PNG is a checkerboard, not a true transparent PNG. Both the
+    # white and gray squares are bright and nearly neutral, so use a generous
+    # brightness range and flood-fill only from the crop boundary. This keeps
+    # cream fur and white paws enclosed by the outline intact.
+    candidate = (brightness >= 205) & (saturation <= 12)
     h, w = candidate.shape
     background = np.zeros_like(candidate, dtype=bool)
     q = deque()
@@ -164,6 +166,18 @@ def make_background_transparent(img: Image.Image) -> Image.Image:
                     q.append((nx, ny))
 
     arr[background, 3] = 0
+
+    # Remove the pale fringe left by antialiasing against the checkerboard.
+    # Only pixels adjacent to the detected background are touched; interior
+    # light fur remains unchanged.
+    adjacent = np.zeros_like(background)
+    adjacent[1:, :] |= background[:-1, :]
+    adjacent[:-1, :] |= background[1:, :]
+    adjacent[:, 1:] |= background[:, :-1]
+    adjacent[:, :-1] |= background[:, 1:]
+    fringe = adjacent & ~background & (brightness >= 185) & (saturation <= 28)
+    arr[fringe, 3] = np.minimum(arr[fringe, 3], 90)
+
     return Image.fromarray(arr)
 
 
