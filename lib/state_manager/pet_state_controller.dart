@@ -26,7 +26,11 @@ class PetStateController extends ChangeNotifier {
   PetPose _pausePose = PetPose.sit;
   Offset? _destination;
   int _frame = 0;
-  int _ticks = 0;
+  double _frameElapsedMs = 0;
+  bool _tickInProgress = false;
+
+  static const _walkFrameDurationMs = 110.0;
+  static const _poseFrameDurationMs = 400.0;
 
   PetPose pose = PetPose.sleep;
   bool facingLeft = false;
@@ -36,7 +40,7 @@ class PetStateController extends ChangeNotifier {
 
   void start() {
     idleDetector.start();
-    _ticker = Timer.periodic(const Duration(milliseconds: 100), (_) => _tick());
+    _ticker = Timer.periodic(const Duration(milliseconds: 50), (_) => _tick());
   }
 
   void pauseWalkingNearCurrentPosition() {
@@ -44,28 +48,41 @@ class PetStateController extends ChangeNotifier {
     _pauseUntil = DateTime.now().add(const Duration(milliseconds: 800));
     pose = PetPose.sleep;
     _frame = 0;
+    _frameElapsedMs = 0;
     notifyListeners();
   }
 
   Future<void> _tick() async {
-    final now = DateTime.now();
-    final elapsed = now.difference(_lastTick);
-    _lastTick = now;
-    final idleState = await idleDetector.currentState();
-
-    switch (idleState) {
-      case UserIdleState.active:
-        _destination = null;
-        _setPose(PetPose.sleep);
-      case UserIdleState.shortIdle:
-        _destination = null;
-        _setPose(PetPose.stretch);
-      case UserIdleState.longIdle:
-        await _walk(elapsed, now);
+    // Position lookup is asynchronous. Do not let a slow lookup overlap the
+    // next tick, otherwise old and new window positions race and movement
+    // appears to stutter.
+    if (_tickInProgress) {
+      return;
     }
+    _tickInProgress = true;
 
-    _advanceFrame();
-    notifyListeners();
+    try {
+      final now = DateTime.now();
+      final elapsed = now.difference(_lastTick);
+      _lastTick = now;
+      final idleState = await idleDetector.currentState();
+
+      switch (idleState) {
+        case UserIdleState.active:
+          _destination = null;
+          _setPose(PetPose.sleep);
+        case UserIdleState.shortIdle:
+          _destination = null;
+          _setPose(PetPose.stretch);
+        case UserIdleState.longIdle:
+          await _walk(elapsed, now);
+      }
+
+      _advanceFrame(elapsed);
+      notifyListeners();
+    } finally {
+      _tickInProgress = false;
+    }
   }
 
   Future<void> _walk(Duration elapsed, DateTime now) async {
@@ -95,7 +112,9 @@ class PetStateController extends ChangeNotifier {
     final step = settings.walkSpeed * elapsed.inMilliseconds / 1000;
     final next = current + delta / distance * min(step, distance);
     facingLeft = delta.dx < 0;
-    bobOffset = sin(_ticks / 2.0) * 4;
+    // A small vertical body motion follows the six-frame gait instead of an
+    // unrelated timer phase, so the feet and body read as one animation.
+    bobOffset = [0.0, -0.5, -1.0, -0.5, 0.0, 0.5, 1.0, 0.5][_frame % 8];
     await windowManager.moveTo(next);
   }
 
@@ -118,14 +137,19 @@ class PetStateController extends ChangeNotifier {
     }
     pose = next;
     _frame = 0;
+    _frameElapsedMs = 0;
     bobOffset = 0;
   }
 
-  void _advanceFrame() {
-    _ticks++;
-    final frameInterval = pose == PetPose.walk ? 1 : 6;
-    if (_ticks % frameInterval == 0) {
-      _frame = (_frame + 1) % pose.frames().length;
+  void _advanceFrame(Duration elapsed) {
+    _frameElapsedMs += elapsed.inMicroseconds / 1000.0;
+    final frameDuration = pose == PetPose.walk
+        ? _walkFrameDurationMs
+        : _poseFrameDurationMs;
+    final frames = pose.frames(facingLeft: facingLeft);
+    while (_frameElapsedMs >= frameDuration) {
+      _frameElapsedMs -= frameDuration;
+      _frame = (_frame + 1) % frames.length;
     }
   }
 

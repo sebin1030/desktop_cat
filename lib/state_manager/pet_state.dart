@@ -14,7 +14,7 @@ extension PetPoseAssetName on PetPose {
           'stretch_01',
           'stretch_02',
           'stretch_03',
-          'stretch_04',
+          'stretch_02',
         ],
       // 별도의 앉기 이미지가 없으므로 편안한 수면 첫 프레임을 사용한다.
       PetPose.sit => const ['sleep_01'],
@@ -26,6 +26,8 @@ extension PetPoseAssetName on PetPose {
               'walk_l_04',
               'walk_l_05',
               'walk_l_06',
+              'walk_l_07',
+              'walk_l_08',
             ]
           : const [
               'walk_r_01',
@@ -34,6 +36,8 @@ extension PetPoseAssetName on PetPose {
               'walk_r_04',
               'walk_r_05',
               'walk_r_06',
+              'walk_r_07',
+              'walk_r_08',
             ],
       PetPose.yawn => const ['yawn_01', 'yawn_02', 'yawn_03'],
     };
